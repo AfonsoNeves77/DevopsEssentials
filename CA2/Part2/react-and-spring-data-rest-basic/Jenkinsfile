@@ -1,0 +1,124 @@
+pipeline {
+    agent any
+
+    environment {
+        DOCKER_CREDENTIALS_ID = 'DockerHub-Cred'
+        DOCKER_IMAGE = "afonsomaria1271819/ca5part2:${env.BUILD_ID}"
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                echo 'Checking out the code...'
+                git credentialsId: 'GH-Cred', url: 'https://github.com/Departamento-de-Engenharia-Informatica/devops-23-24-JPE-PMS-1231819.git', branch: 'main'
+            }
+        }
+
+        stage('Prepare Environment') {
+            steps {
+                echo 'Setting file permissions...'
+                dir('CA2/Part2/react-and-spring-data-rest-basic') {
+                    sh 'chmod +x ./gradlew'
+                }
+            }
+        }
+
+        stage('Assemble') {
+            steps {
+                echo 'Assembling the application...'
+                dir('CA2/Part2/react-and-spring-data-rest-basic') {
+                    sh './gradlew assemble'
+                }
+            }
+        }
+
+        stage('Test') {
+            steps {
+                echo 'Running unit tests...'
+                dir('CA2/Part2/react-and-spring-data-rest-basic') {
+                    sh './gradlew test'
+                    junit 'build/test-results/**/*.xml'
+                }
+            }
+            post {
+                always {
+                    dir('CA2/Part2/react-and-spring-data-rest-basic') {
+                        archiveArtifacts 'build/test-results/**/*.xml'
+                    }
+                }
+            }
+        }
+
+        stage('Javadoc') {
+            steps {
+                echo 'Generating Javadoc...'
+                dir('CA2/Part2/react-and-spring-data-rest-basic') {
+                    echo 'Ensuring gradlew has execute permission:'
+                    sh 'chmod +x ./gradlew'
+                    sh './gradlew javadoc'
+                }
+            }
+        }
+
+        stage('Archive') {
+            steps {
+                echo 'Archiving the application...'
+                archiveArtifacts artifacts: 'build/**/*.war', allowEmptyArchive: true
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                echo 'Building Docker image...'
+                dir('CA2/Part2/react-and-spring-data-rest-basic') {
+                    // Copy the WAR file into the Docker build context
+                    sh 'cp build/libs/react-and-spring-data-rest-basic-0.0.1-SNAPSHOT.war .'
+
+                    // Dynamically generate Dockerfile
+                    script {
+                        def dockerfileContent = """
+                        FROM tomcat:10.0.20-jdk17-temurin
+
+                        COPY *.war /usr/local/tomcat/webapps/
+
+                        ENV SPRING_DATASOURCE_URL=jdbc:h2:mem:jpadb
+                        """
+                        writeFile file: 'Dockerfile', text: dockerfileContent
+                    }
+
+                    // Build Docker image using Dockerfile
+                    script {
+                        docker.build("${DOCKER_IMAGE}")
+                    }
+                }
+            }
+        }
+
+        stage('Push Docker Image') {
+            steps {
+                echo 'Pushing Docker image to Docker Hub...'
+                script {
+                    docker.withRegistry('https://index.docker.io/v1/', DOCKER_CREDENTIALS_ID) {
+                        docker.image("${DOCKER_IMAGE}").push()
+                    }
+                }
+            }
+        }
+
+        stage('Publish Javadoc') {
+            steps {
+                echo 'Publishing Javadoc...'
+                dir('CA2/Part2/react-and-spring-data-rest-basic') {
+                    publishHTML target: [
+                        allowMissing: true, // Allow missing files to debug
+                        alwaysLinkToLastBuild: true,
+                        keepAll: true,
+                        reportDir: 'build/docs/javadoc',
+                        reportFiles: 'index.html',
+                        reportName: 'Javadoc Report'
+                    ]
+                }
+            }
+        }
+    }
+}

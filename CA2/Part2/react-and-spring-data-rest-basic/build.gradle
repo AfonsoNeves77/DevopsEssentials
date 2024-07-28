@@ -1,0 +1,57 @@
+plugins {
+	id 'java'
+	id 'org.springframework.boot' version '3.2.4'
+	id 'io.spring.dependency-management' version '1.1.4'
+	id "org.siouan.frontend-jdk17" version "8.0.0"
+	id "war"
+}
+
+frontend {
+	 nodeVersion = "16.20.2"
+	 assembleScript = "run build"
+	 cleanScript = "run clean"
+	 checkScript = "run check"
+}
+
+group = 'com.gregIturnquist'
+version = '0.0.1-SNAPSHOT'
+
+java {
+	sourceCompatibility = '17'
+}
+
+repositories {
+	mavenCentral()
+}
+
+dependencies {
+	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+	implementation 'org.springframework.boot:spring-boot-starter-data-rest'
+	implementation 'org.springframework.boot:spring-boot-starter-thymeleaf'
+	runtimeOnly 'com.h2database:h2'
+	testImplementation 'org.springframework.boot:spring-boot-starter-test'
+	providedRuntime 'org.springframework.boot:spring-boot-starter-tomcat'
+}
+
+tasks.named('test') {
+	useJUnitPlatform()
+}
+
+bootRun {
+	systemProperty 'spring.datasource.url', 'jdbc:h2:mem:jpadb' // Override the datasource URL
+}
+
+
+task copyJar(type: Copy,dependsOn: bootJar) {
+	from "build/libs"
+	description "Copies jar into dist folder"
+	into "dist"
+	include "*.jar"
+}
+
+task deleteWebPack(type: Delete) {
+	description "deletes built/. webpack generated content"
+	delete 'src/main/resources/static/built'
+}
+clean.dependsOn(deleteWebPack)
+

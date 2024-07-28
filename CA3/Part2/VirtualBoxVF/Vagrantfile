@@ -1,0 +1,103 @@
+# -- mode: ruby --
+# vi: set ft=ruby :
+
+# All Vagrant configuration is done below. The "2" in Vagrant.configure
+# configures the configuration version (we support older styles for
+# backwards compatibility). Please don't change it unless you know what
+# you're doing.# for information about machine names on private network
+Vagrant.configure("2") do |config|
+config.vm.box = "ubuntu/bionic64"
+config.vm.boot_timeout = 100
+
+# This provision is common for both VMs
+config.vm.provision "shell", inline: <<-SHELL
+sudo apt-get update -y
+sudo apt-get install -y iputils-ping avahi-daemon libnss-mdns unzip \
+                       openjdk-17-jdk-headless
+# ifconfig
+       SHELL
+
+#============
+# Configurations specific to the database VM
+config.vm.define "db" do |db|
+db.vm.box = "ubuntu/bionic64"
+db.vm.hostname = "db"
+db.vm.network "private_network", ip: "192.168.56.11"
+
+# We want to access H2 console from the host using port 8082
+# We want to connet to the H2 server using port 9092
+db.vm.network "forwarded_port", guest: 8082, host: 8082
+db.vm.network "forwarded_port", guest: 9092, host: 9092
+
+# We need to download H2
+db.vm.provision "shell", inline: <<-SHELL
+wget https://repo1.maven.org/maven2/com/h2database/h2/2.2.224/h2-2.2.224.jar
+    SHELL
+
+# The following provision shell will run ALWAYS so that we can execute the H2 server process
+# This could be done in a different way, for instance, setiing H2 as as service, like in the following link:
+# How to setup java as a service in ubuntu: http://www.jcgonzalez.com/ubuntu-16-java-service-wrapper-example
+#
+# To connect to H2 use: jdbc:h2:tcp://192.168.33.11:9092/./jpadb
+db.vm.provision "shell", :run => 'always', inline: <<-SHELL
+java -cp ./h2*.jar org.h2.tools.Server -web -webAllowOthers -tcp -tcpAllowOthers -ifNotExists > ~/out.txt &
+SHELL
+    end
+
+#============
+# Configurations specific to the webserver VM
+config.vm.define "web" do |web|
+web.vm.box = "ubuntu/bionic64"
+web.vm.hostname = "web"
+web.vm.network "private_network", ip: "192.168.56.10"
+
+# We set more ram memmory for this VM
+web.vm.provider "virtualbox" do |v|
+v.memory = 1024
+    end
+
+# We want to access tomcat from the host using port 8080
+web.vm.network "forwarded_port", guest: 8080, host: 8080
+
+#Shell provisioner downloads Apache Tomcat 10.1.23 and extracted into the current directory.
+
+web.vm.provision "shell", inline: <<-SHELL
+
+wget https://archive.apache.org/dist/tomcat/tomcat-10/v10.1.23/bin/apache-tomcat-10.1.23.tar.gz
+
+sudo tar xzvf apache-tomcat-10*tar.gz -C .
+
+# Setting ownership of the Apache Tomcat directory and its contents to the user vagrant and granting execute permissions recursively.
+
+sudo chown -R vagrant:vagrant apache-tomcat-10*
+
+sudo chmod -R u+x apache-tomcat-10*
+
+SHELL
+
+# This shell provisioner guarantees that the Apache Tomcat server is automatically initiated upon provisioning the web VM, executing the startup.sh script.
+
+web.vm.provision "shell", :run => 'always', inline: <<-SHELL
+   ./apache-tomcat-10*/bin/startup.sh
+SHELL
+
+# This block configures a shell provisioner for the web VM, executing a series of commands including cloning a Git repository,
+# building a project with Gradle, and deploying the resulting WAR file to a Tomcat directory, all without elevated privileges.
+
+web.vm.provision "shell", inline: <<-SHELL, privileged: false
+
+ git clone https://github.com/Departamento-de-Engenharia-Informatica/devops-23-24-JPE-PMS-1231819.git
+
+ cd devops-23-24-JPE-PMS-1231819/CA2/Part2/react-and-spring-data-rest-basic
+
+ sudo chmod u+x gradlew
+
+ ./gradlew clean build
+
+# To deploy the war file to tomcat10 do the following command:
+
+ sudo cp ./build/libs/react-and-spring-data-rest-basic-0.0.1-SNAPSHOT.war ~/apache-tomcat-10*/webapps/
+
+ SHELL
+    end
+ end

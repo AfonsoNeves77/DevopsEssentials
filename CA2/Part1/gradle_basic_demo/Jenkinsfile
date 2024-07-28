@@ -1,0 +1,60 @@
+pipeline {
+    agent any
+
+    stages {
+        stage('Checkout') {
+            steps {
+                echo 'Checking out...'
+                script {
+                    def gitCredentials = credentials('GH-Cred')
+                    if (gitCredentials != null) {
+                        git credentialsId: 'GH-Cred', url: 'https://github.com/Departamento-de-Engenharia-Informatica/devops-23-24-JPE-PMS-1231819.git', branch: 'main'
+                    } else {
+                        error('Failed to retrieve Git credentials')
+                    }
+                }
+            }
+        }
+
+        stage('Prepare Environment') {
+            steps {
+                echo 'Setting file permissions...'
+                dir('CA2/Part1/gradle_basic_demo/') {
+                    sh 'chmod +x ./gradlew'
+                }
+            }
+        }
+
+        stage('Assemble') {
+            steps {
+                dir('CA2/Part1/gradle_basic_demo/') {
+                    sh './gradlew assemble'
+                }
+            }
+        }
+
+        stage('Test') {
+            steps {
+                dir('CA2/Part1/gradle_basic_demo/') {
+                    sh './gradlew test'
+                    junit 'build/test-results/**/*.xml'
+                }
+            }
+            post {
+                always {
+                    dir('CA2/Part1/gradle_basic_demo/') {
+                        archiveArtifacts 'build/test-results/**/*.xml'
+                    }
+                }
+            }
+        }
+
+        stage('Archive') {
+            steps {
+                dir('CA2/Part1/gradle_basic_demo/') {
+                    archiveArtifacts artifacts: 'build/**/*.jar', allowEmptyArchive: true
+                }
+            }
+        }
+    }
+}

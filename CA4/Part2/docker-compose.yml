@@ -1,0 +1,32 @@
+version: '3'
+services:
+  web:
+    build: ./web
+    ports:
+      - "8080:8080"
+    networks:
+      default:
+        ipv4_address: 192.168.33.10
+    depends_on:
+      - db
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:h2:tcp://192.168.33.11:9092/./jpadb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+
+  db:
+    build: ./db
+    ports:
+      - "8082:8082"
+      - "9092:9092"
+    volumes:
+      - ./data:/usr/src/data-backup
+    networks:
+      default:
+        ipv4_address: 192.168.33.11
+networks:
+  default:
+    ipam:
+      driver: default
+      config:
+        - subnet: 192.168.33.0/24
+
+
